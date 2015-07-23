@@ -17,33 +17,6 @@
   [m indices value]
   (apply assoc m (interleave indices (repeat value))))
 
-;; Collecting and printing solutions
-
-(defn print-cell [cell]
-  (print (case cell
-           (:empty :threatened) "_"
-           :king "K"
-           :queen "Q"
-           :bishop "B"
-           :rook "R"
-           :knight "N")))
-
-(defn print-grid [grid]
-  (doseq [y (range (g/height grid))]
-    (doseq [x (range (g/width grid))]
-      (print-cell (grid [x y])))
-    (println)))
-
-(def ^:dynamic solutions) ; a collection of solution grids
-
-(defn add-to-solutions [grid]
-  (swap! solutions conj grid))
-
-(defn print-grids [grids]
-  (doseq [grid grids]
-    (print-grid grid)
-    (println)))
-
 ;; Main logic
 
 (defn in-bounds? [[x y] [width height]]
@@ -89,33 +62,40 @@
               (piece->threatened-squares :bishop piece-location board-size)
               (piece->threatened-squares :rook piece-location board-size)))))
 
+(def valid-pieces #{:king :queen :bishop :rook :knight})
+(def occupied? valid-pieces)
+
 (defn try-place
   "If square at position is empty and piece would not threaten any other pieces,
-  places piece on board,
-  marking its square as occupied and threatened squares as threatened
-  otherwise returns nil."
+  places piece on board and threatened squares as threatened.
+  Otherwise returns nil."
   [piece position grid]
-  (let [cell (get grid position)]
+  (let [cell (grid position)]
     (when (= cell :empty)
       (let [threatened-cells (piece->threatened-squares piece
                                                         position
                                                         [(g/width grid)
                                                          (g/height grid)])]
-        (when (every? #{:empty :threatened}
-                      (map grid threatened-cells))
+        (when (not-any? occupied? (map grid threatened-cells))
           (-> grid
               (assoc position piece)
               (assoc-vals threatened-cells :threatened)))))))
 
 (def ^:dynamic calculated-configurations)
+(def ^:dynamic solutions)
+(def ^:dynamic solutions-count)
+(def ^:dynamic count-only?)
 
-(defn- find-solutions*
+(defn find-solutions*
   "The search function for recursion levels > 1.
-  Meant to be called by 'find-solution', which is for the starting point."
+  Meant to be called by 'find-solution', which is the starting point."
   [pieces grid]
   (let [next-one (first pieces)]
     (if-not next-one
-      (add-to-solutions grid)
+      (do
+       (when-not count-only?
+         (swap! solutions conj grid))
+       (swap! solutions-count inc))
       (doseq [position (g/posis grid)]
         (when-let [new-grid (try-place next-one position grid)]
           (when-not (contains? @calculated-configurations new-grid)
@@ -141,43 +121,56 @@
                       (throw (Error. "The first piece should be able to be placed on all board locations."))))]
     (dorun (pmap try-place (g/posis grid)))))
 
-
-;; each square of grid can have one of these values:
-;; :empty, :threatened, occupied (-> :king, queen, ...)
-
-;; useful to work with the results in the REPL
-(def last-results (atom nil))
-
 (defn solve
   "Given a sequence of chess pieces and the dimensions width and height
   of the board, returns all configurations for which all of the pieces can be placed
   without threatening each other.
-  A piece must be one of: :king :queen :bishop :rook :knight."
-  [pieces width height]
-  {:pre [(every? #{:king :queen :bishop :rook :knight} pieces)
+  A piece must be one of: :king :queen :bishop :rook :knight.
+
+  Additonal argument is :count-only, for not returning all solutions as data, but only counting
+  the number of unique configurations.
+  This is recommended for bigger board sizes, to save memory.
+
+  The search is done using depth-first with backtracking and saving all intermediate results, so
+  this can take quite some memory (4 GB for the example below), but makes it faster.
+
+  Also the search is done in parallel.
+
+  Example:
+  (solve [:king :king :queen :queen :bishop :bishop :knight] 7 7 :count-only true)"
+  [pieces width height & {:keys [count-only]}]
+  {:pre [(every? valid-pieces pieces)
          (seq pieces)
          (integer? width)
          (pos? width)
          (integer? height)
          (pos? height)]}
+
   (binding [solutions (atom [])
+            solutions-count (atom 0)
+            count-only? count-only
             calculated-configurations (atom #{})]
+
     (let [empty-grid (g/create-grid width height (constantly :empty))]
       (find-solutions pieces empty-grid)
-      ;(println (count @solutions) " solutions found.")
-      ;(swap! solutions distinct)
-      (println (count @solutions) " distinct solutions found.")
-      ;(print-grids @solutions)
-      ;(reset! last-results [@solutions @calculated-configurations])
-      @solutions
-      )))
+      (println @solutions-count " solutions found.")
+      (if count-only
+        nil
+        @solutions))))
 
-;(time (solve [:king :king :queen :queen :bishop :bishop :knight] 3 3))
-; 23 752 solutions
-; 40 sekunden
-; with parallelizing: 20 seconds
-; with flagged configurations: 5 sec.!
-; 7x7 only possible with flagged configurations.
+(defn print-grid [grid]
+  (doseq [y (range (g/height grid))]
+    (doseq [x (range (g/width grid))]
+      (print (case (grid [x y])
+               (:empty :threatened) "_"
+               :king "K"
+               :queen "Q"
+               :bishop "B"
+               :rook "R"
+               :knight "N")))
+    (println)))
 
-; TODO lein run arguments
-; TODO tests (vom blatt)
+(defn print-grids [grids]
+  (doseq [grid grids]
+    (print-grid grid)
+    (println)))
