@@ -109,11 +109,9 @@
 
 (def ^:dynamic calculated-configurations)
 
-(defn find-solutions
-  "Starts with the first piece and tries to place on all
-  possible positions in the grid, for each position calls this function again,
-  with the next piece in list.
-  When all pieces placed, a solution has been found."
+(defn- find-solutions*
+  "The search function for recursion levels > 1.
+  Meant to be called by 'find-solution', which is for the starting point."
   [pieces grid]
   (let [next-one (first pieces)]
     (if-not next-one
@@ -122,29 +120,27 @@
         (when-let [new-grid (try-place next-one position grid)]
           (when-not (contains? @calculated-configurations new-grid)
             (swap! calculated-configurations conj new-grid)
-            (find-solutions (rest pieces) new-grid)))))))
+            (find-solutions* (rest pieces) new-grid)))))))
 
-(defn find-solutions-1 ; TODO duplicated method
-  "Starts with the first piece and tries to place on all
-  possible positions in the grid, for each position calls this function again,
-  with the next piece in list.
-  When all pieces placed, a solution has been found."
+(defn find-solutions
+  "Starts with the first piece of 'pieces' and places it on
+  all possible positions on the grid.
+  For each position, calls this function again with the remaining pieces.
+  Is executed in parallel using clojure.core/pmap."
   [pieces grid]
-  (let [next-one (first pieces)
+  {:pre [(seq pieces)
+         (every? #(= % :empty) (g/cells grid))]}
+  (let [first-piece (first pieces)
         progress (atom 0)
         max-posis (count (g/posis grid))
-        ]
-    (if-not next-one
-      (add-to-solutions grid) ; unreachable code
-      (dorun (pmap
-              (fn [position]
-                (sprintln "Progress: ~"
-                          (int (* (/ (swap! progress inc) max-posis)
-                                  100))
-                          "%")
-                (when-let [new-grid (try-place next-one position grid)] ; place the first one.
-                  (find-solutions (rest pieces) new-grid)))
-              (g/posis grid))))))
+        print-progress #(sprintln (int (* (/ (swap! progress inc) max-posis) 100)) "%")
+        try-place (fn [position]
+                    (print-progress)
+                    (if-let [new-grid (try-place first-piece position grid)]
+                      (find-solutions* (rest pieces) new-grid)
+                      (throw (Error. "The first piece should be able to be placed on all board locations."))))]
+    (dorun (pmap try-place (g/posis grid)))))
+
 
 ;; each square of grid can have one of these values:
 ;; :empty, :threatened, occupied (-> :king, queen, ...)
@@ -166,8 +162,8 @@
          (pos? height)]}
   (binding [solutions (atom [])
             calculated-configurations (atom #{})]
-    (let [empty-grid (g/create-grid width height (fn [position] :empty))]
-      (find-solutions-1 pieces empty-grid)
+    (let [empty-grid (g/create-grid width height (constantly :empty))]
+      (find-solutions pieces empty-grid)
       ;(println (count @solutions) " solutions found.")
       ;(swap! solutions distinct)
       (println (count @solutions) " distinct solutions found.")
