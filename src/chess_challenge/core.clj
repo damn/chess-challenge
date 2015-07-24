@@ -82,6 +82,16 @@
               (assoc-vals threatened-cells :threatened)))))))
 
 (def ^:dynamic calculated-configurations)
+
+; need to use ref & dosync here, an atom may be swapped by another thread after the contains?
+; could also use compare-and-set!, but this is simpler.
+(defn already-calculated? [grid]
+  (dosync
+   (if (contains? @calculated-configurations grid)
+     true
+     (do (alter calculated-configurations conj grid)
+         false))))
+
 (def ^:dynamic solutions)
 (def ^:dynamic solutions-count)
 (def ^:dynamic count-only?)
@@ -98,8 +108,7 @@
        (swap! solutions-count inc))
       (doseq [position (g/posis grid)]
         (when-let [new-grid (try-place next-one position grid)]
-          (when-not (contains? @calculated-configurations new-grid)
-            (swap! calculated-configurations conj new-grid)
+          (when-not (already-calculated? new-grid)
             (find-solutions* (rest pieces) new-grid)))))))
 
 (defn find-solutions
@@ -162,7 +171,7 @@
   (binding [solutions (atom [])
             solutions-count (atom 0)
             count-only? count-only
-            calculated-configurations (atom #{})]
+            calculated-configurations (ref #{})]
 
     (let [empty-grid (g/create-grid width height (constantly :empty))]
       (time (find-solutions pieces empty-grid))
