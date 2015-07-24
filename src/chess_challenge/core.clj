@@ -121,20 +121,32 @@
                       (throw (Error. "The first piece should be able to be placed on all board locations."))))]
     (dorun (pmap try-place (g/posis grid)))))
 
+(defn print-grid [grid]
+  (doseq [y (range (g/height grid))]
+    (doseq [x (range (g/width grid))]
+      (print (case (grid [x y])
+               (:empty :threatened) "_"
+               :king "K"
+               :queen "Q"
+               :bishop "B"
+               :rook "R"
+               :knight "N")))
+    (println)))
+
+(defn print-grids [grids]
+  (doseq [grid grids]
+    (print-grid grid)
+    (println)))
+
 (defn solve
   "Given a sequence of chess pieces and the dimensions width and height
   of the board, returns all configurations for which all of the pieces can be placed
   without threatening each other.
   A piece must be one of: :king :queen :bishop :rook :knight.
 
-  Additonal argument is :count-only, for not returning all solutions as data, but only counting
+  Additonal argument is :count-only, for not returning all solutions as data (and printing them), but only returning
   the number of unique configurations.
   This is recommended for bigger board sizes, to save memory.
-
-  The search is done using depth-first with backtracking and saving all intermediate results, so
-  this can take quite some memory (4 GB for the example below), but makes it faster.
-
-  Also the search is done in parallel.
 
   Example:
   (solve [:king :king :queen :queen :bishop :bishop :knight] 7 7 :count-only true)"
@@ -156,21 +168,6 @@
       (println @solutions-count " solutions found.")
       (if count-only
         nil
-        @solutions))))
-
-(defn print-grid [grid]
-  (doseq [y (range (g/height grid))]
-    (doseq [x (range (g/width grid))]
-      (print (case (grid [x y])
-               (:empty :threatened) "_"
-               :king "K"
-               :queen "Q"
-               :bishop "B"
-               :rook "R"
-               :knight "N")))
-    (println)))
-
-(defn print-grids [grids]
-  (doseq [grid grids]
-    (print-grid grid)
-    (println)))
+        (do
+         (print-grids @solutions)
+         @solutions)))))
