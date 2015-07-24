@@ -147,6 +147,7 @@
   Additonal argument is :count-only, for not returning all solutions as data (and printing them), but only returning
   the number of unique configurations.
   This is recommended for bigger board sizes, to save memory.
+  For the following example, printing out over 3 million configurations to the console is not very useful.
 
   Example:
   (solve [:king :king :queen :queen :bishop :bishop :knight] 7 7 :count-only true)"
@@ -164,10 +165,14 @@
             calculated-configurations (atom #{})]
 
     (let [empty-grid (g/create-grid width height (constantly :empty))]
-      (find-solutions pieces empty-grid)
+      (time (find-solutions pieces empty-grid))
       (println @solutions-count " solutions found.")
       (if count-only
         nil
         (do
          (print-grids @solutions)
          @solutions)))))
+
+(defn -main [& args]
+  (apply solve (map read-string args))
+  (System/exit 0))
