@@ -81,54 +81,61 @@
               (assoc position piece)
               (assoc-vals threatened-cells :threatened)))))))
 
-(def ^:dynamic calculated-configurations)
-
-; need to use ref & dosync here, an atom may be swapped by another thread after the contains?
-; could also use compare-and-set!, but this is simpler.
-(defn already-calculated? [grid]
-  (dosync
-   (if (contains? @calculated-configurations grid)
-     true
-     (do (alter calculated-configurations conj grid)
-         false))))
-
-(def ^:dynamic solutions)
-(def ^:dynamic solutions-count)
-(def ^:dynamic count-only?)
+(defn already-calculated? [status grid]
+  (contains? (:calculated-configurations status) grid))
 
 (defn find-solutions*
   "The search function for recursion levels > 1.
-  Meant to be called by 'find-solution', which is the starting point."
-  [pieces grid]
-  (let [next-one (first pieces)]
-    (if-not next-one
-      (do
-       (when-not count-only?
-         (swap! solutions conj grid))
-       (swap! solutions-count inc))
-      (doseq [position (g/posis grid)]
-        (when-let [new-grid (try-place next-one position grid)]
-          (when-not (already-calculated? new-grid)
-            (find-solutions* (rest pieces) new-grid)))))))
+  Meant to be called by 'find-solution', which is the starting point.
+  Returns a new status hash:
+  {:solutions, :solutions-count, :calculated-configurations}"
+  [pieces grid count-only? status]
+  (if-let [piece (first pieces)]
+    (loop [positions (g/posis grid)
+           status status]
+      (if-let [position (first positions)]
+        (recur (rest positions)
+               (if-let [new-grid (try-place piece position grid)]
+                 (if (already-calculated? status new-grid)
+                   status
+                   (find-solutions* (rest pieces)
+                                    new-grid
+                                    count-only?
+                                    (update status :calculated-configurations conj new-grid)))
+                 status))
+        status))
+    (let [status (update status :solutions-count inc)]
+      (if count-only?
+        status
+        (update status :solutions conj grid)))))
 
 (defn find-solutions
   "Starts with the first piece of 'pieces' and places it on
   all possible positions on the grid.
   For each position, calls this function again with the remaining pieces.
-  Is executed in parallel using clojure.core/pmap."
-  [pieces grid]
+
+  Returns a vector of [solutions solutions-count].
+
+  If count-only? is true, then solutions will be empty."
+  [pieces grid count-only?]
   {:pre [(seq pieces)
          (every? #(= % :empty) (g/cells grid))]}
   (let [first-piece (first pieces)
         progress (atom 0)
         max-posis (count (g/posis grid))
-        print-progress #(sprintln (int (* (/ (swap! progress inc) max-posis) 100)) "%")
-        try-place (fn [position]
-                    (print-progress)
-                    (if-let [new-grid (try-place first-piece position grid)]
-                      (find-solutions* (rest pieces) new-grid)
-                      (throw (Error. "The first piece should be able to be placed on all board locations."))))]
-    (dorun (pmap try-place (g/posis grid)))))
+        print-progress #(sprintln (int (* (/ (swap! progress inc) max-posis) 100)) "%")]
+    (loop [positions (g/posis grid)
+           status {:solutions []
+                   :solutions-count 0
+                   :calculated-configurations #{}}]
+      (if-let [position (first positions)]
+        (do
+         (print-progress)
+         (if-let [new-grid (try-place first-piece position grid)]
+           (recur (rest positions)
+                  (find-solutions* (rest pieces) new-grid count-only? status))
+           (throw (Error. "The first piece should be able to be placed on all board locations."))))
+        [(:solutions status) (:solutions-count status)]))))
 
 (defn print-grid [grid]
   (doseq [y (range (g/height grid))]
@@ -167,20 +174,15 @@
          (pos? width)
          (integer? height)
          (pos? height)]}
-
-  (binding [solutions (atom [])
-            solutions-count (atom 0)
-            count-only? count-only
-            calculated-configurations (ref #{})]
-
-    (let [empty-grid (g/create-grid width height (constantly :empty))]
-      (time (find-solutions pieces empty-grid))
-      (println @solutions-count " solutions found.")
-      (if count-only
-        nil
-        (do
-         (print-grids @solutions)
-         @solutions)))))
+  (let [empty-grid (g/create-grid width height (constantly :empty))
+        [solutions solutions-count] (time (find-solutions pieces
+                                                          empty-grid
+                                                          count-only))]
+    (println solutions-count " solutions found.")
+    (if count-only
+      nil
+      (do (print-grids solutions)
+          solutions))))
 
 (defn -main [& args]
   (apply solve (map read-string args))
