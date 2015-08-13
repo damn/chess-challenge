@@ -3,15 +3,6 @@
 
 ;; Utilities
 
-(def printer (agent nil))
-
-(defmacro sprintln
-  "Synchronized println using an agent."
-  [& text]
-  `(do
-    (send printer (fn [a#] (println ~@text)))
-    nil))
-
 (defn assoc-vals
   "Associates indices in map m with value."
   [m indices value]
@@ -133,18 +124,19 @@
   {:pre [(seq pieces)
          (every? #(= % :empty) (g/cells grid))]}
   (let [first-piece (first pieces)
-        progress (atom 0)
         max-posis (count (g/posis grid))
-        print-progress #(sprintln (int (* (/ (swap! progress inc) max-posis) 100)) "%")]
+        print-progress #(println (int (* (/ % max-posis) 100)) "%")]
     (loop [positions (g/posis grid)
+           progress 0
            status {:solutions []
                    :solutions-count 0
                    :calculated-configurations #{}}]
       (if-let [position (first positions)]
         (do
-         (print-progress)
+         (print-progress progress)
          (if-let [new-grid (try-place first-piece position grid)]
            (recur (rest positions)
+                  (inc progress)
                   (find-solutions* (rest pieces) new-grid count-only? status))
            (throw (Error. "The first piece should be able to be placed on all board locations."))))
         [(:solutions status) (:solutions-count status)]))))
