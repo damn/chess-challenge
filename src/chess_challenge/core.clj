@@ -93,17 +93,29 @@
   (if-let [piece (first pieces)]
     (loop [positions (g/posis grid)
            status status]
-      (if-let [position (first positions)]
-        (recur (rest positions)
-               (if-let [new-grid (try-place piece position grid)]
-                 (if (already-calculated? status new-grid)
-                   status
-                   (find-solutions* (rest pieces)
-                                    new-grid
-                                    count-only?
-                                    (update status :calculated-configurations conj new-grid)))
-                 status))
-        status))
+      (if (empty? positions)
+        status
+        (let [new-grid (try-place piece (first positions) grid)
+              new-status (cond
+                          ; position is not valid for piece: we do not go deeper here.
+                          (nil? new-grid)
+                          status
+
+                          ; this configuration was already calculated: we do not go deeper here.
+                          (already-calculated? status new-grid)
+                          status
+
+                          ; the piece could be placed on the grid and this configuration is not searched yet:
+                          ; we go deeper here.
+                          ; We continue with the other pieces and the new-grid contains the current piece placed on
+                          ; the current position.
+                          ; We also add this new configuration to calculated-configurations, to prevent duplicate effort.
+                          :else
+                          (find-solutions* (rest pieces)
+                                           new-grid
+                                           count-only?
+                                           (update status :calculated-configurations conj new-grid)))]
+          (recur (rest positions) new-status))))
     (let [status (update status :solutions-count inc)]
       (if count-only?
         status
