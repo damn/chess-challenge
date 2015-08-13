@@ -164,14 +164,14 @@
   without threatening each other.
   A piece must be one of: :king :queen :bishop :rook :knight.
 
-  Additonal argument is :count-only, for not returning all solutions as data (and printing them), but only returning
+  Additonal argument is :count-only?, for not returning all solutions as data (and printing them), but only returning
   the number of unique configurations.
   This is recommended for bigger board sizes, to save memory.
   For the following example, printing out over 3 million configurations to the console is not very useful.
 
   Example:
-  (solve [:king :king :queen :queen :bishop :bishop :knight] 7 7 :count-only true)"
-  [pieces width height & {:keys [count-only]}]
+  (solve [:king :king :queen :queen :bishop :bishop :knight] 7 7 :count-only? true)"
+  [pieces width height & {:keys [count-only?]}]
   {:pre [(every? valid-pieces pieces)
          (seq pieces)
          (integer? width)
@@ -181,9 +181,9 @@
   (let [empty-grid (g/create-grid width height (constantly :empty))
         [solutions solutions-count] (time (find-solutions pieces
                                                           empty-grid
-                                                          count-only))]
+                                                          count-only?))]
     (println solutions-count " solutions found.")
-    (if count-only
+    (if count-only?
       nil
       (do (print-grids solutions)
           solutions))))
