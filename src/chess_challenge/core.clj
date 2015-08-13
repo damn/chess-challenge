@@ -90,12 +90,16 @@
   Returns a new status hash:
   {:solutions, :solutions-count, :calculated-configurations}"
   [pieces grid count-only? status]
-  (if-let [piece (first pieces)]
+  (if (empty? pieces)
+    (let [status (update status :solutions-count inc)]
+      (if count-only?
+        status
+        (update status :solutions conj grid)))
     (loop [positions (g/posis grid)
            status status]
       (if (empty? positions)
         status
-        (let [new-grid (try-place piece (first positions) grid)
+        (let [new-grid (try-place (first pieces) (first positions) grid)
               new-status (cond
                           ; position is not valid for piece: we do not go deeper here.
                           (nil? new-grid)
@@ -115,11 +119,7 @@
                                            new-grid
                                            count-only?
                                            (update status :calculated-configurations conj new-grid)))]
-          (recur (rest positions) new-status))))
-    (let [status (update status :solutions-count inc)]
-      (if count-only?
-        status
-        (update status :solutions conj grid)))))
+          (recur (rest positions) new-status))))))
 
 (defn find-solutions
   "Starts with the first piece of 'pieces' and places it on
